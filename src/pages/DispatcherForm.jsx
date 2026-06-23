@@ -223,7 +223,7 @@ export default function DispatcherForm() {
           )}
 
           {/* Address Inputs */}
-          <Card variant="outlined">
+          <Card variant="outlined" sx={{ overflow: 'visible' }}>
             <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
               <Typography variant="subtitle1" fontWeight={700} mb={2} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <RouteRoundedIcon sx={{ color: 'primary.main', fontSize: 20 }} />
