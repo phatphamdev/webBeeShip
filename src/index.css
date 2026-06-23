@@ -1,0 +1,124 @@
+/* ============================================================
+   BeeShip Global Styles
+   ============================================================ */
+
+/* Leaflet z-index override – ngăn popup bị che bởi MUI */
+.leaflet-pane { z-index: 1; }
+.leaflet-top, .leaflet-bottom { z-index: 2; }
+.leaflet-popup { z-index: 5; }
+.leaflet-container { font-family: 'Inter', sans-serif; }
+.leaflet-container a { color: #f59e0b; }
+.leaflet-popup-content-wrapper {
+  background: #1e1e2e;
+  color: #f1f0ef;
+  border: 1px solid rgba(241,240,239,0.1);
+  border-radius: 8px !important;
+}
+.leaflet-popup-tip { background: #1e1e2e; }
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #0f0f14;
+  color: #f1f0ef;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar dark styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #1a1a24;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a3a50;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #f59e0b;
+}
+
+/* Google Maps Autocomplete dropdown override for dark theme */
+.pac-container {
+  background-color: #1e1e2e !important;
+  border: 1px solid rgba(241, 240, 239, 0.12) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+  font-family: 'Inter', sans-serif !important;
+  margin-top: 4px;
+}
+
+.pac-item {
+  background-color: #1e1e2e !important;
+  color: #f1f0ef !important;
+  border-top: 1px solid rgba(241, 240, 239, 0.06) !important;
+  padding: 10px 14px !important;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.15s;
+}
+
+.pac-item:hover {
+  background-color: #2a2a3e !important;
+}
+
+.pac-item-query {
+  color: #f59e0b !important;
+  font-weight: 600;
+}
+
+.pac-matched {
+  color: #fcd34d !important;
+  font-weight: 700;
+}
+
+.pac-icon {
+  filter: brightness(0) invert(0.7);
+}
+
+/* DevExtreme dark theme override adjustments */
+.dx-datagrid {
+  background: transparent !important;
+}
+.dx-datagrid-headers {
+  border-bottom: 1px solid rgba(241, 240, 239, 0.1) !important;
+}
+
+/* Page fade-in animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-enter {
+  animation: fadeInUp 0.35s ease forwards;
+}
+
+/* Pulse animation for price badge */
+@keyframes pricePulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+
+.price-pulse {
+  animation: pricePulse 0.4s ease;
+}
