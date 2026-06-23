@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Box } from '@mui/material';
 import Navbar from './components/Navbar.jsx';
 import DispatcherPage from './pages/DispatcherPage.jsx';
@@ -7,7 +7,7 @@ import AdminPanel from './pages/AdminPanel.jsx';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
         <Navbar />
         <Box component="main" sx={{ flex: 1 }}>
@@ -18,6 +18,6 @@ export default function App() {
           </Routes>
         </Box>
       </Box>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
