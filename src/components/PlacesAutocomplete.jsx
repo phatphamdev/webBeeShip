@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLoadScript } from '@react-google-maps/api';
 import {
   Box,
   TextField,
@@ -15,11 +14,9 @@ import {
 import LocationOnRoundedIcon from '@mui/icons-material/LocationOnRounded';
 import FlagRoundedIcon from '@mui/icons-material/FlagRounded';
 
-// Khai báo mảng libraries bên ngoài component để tránh re-render liên tục
-const libraries = ['places'];
-
 /**
- * PlacesAutocomplete – Sử dụng Google Maps Places API để gợi ý địa chỉ
+ * PlacesAutocomplete – dùng Nominatim (OpenStreetMap) thay Google Places
+ * Hoàn toàn miễn phí, không cần API key
  */
 export default function PlacesAutocomplete({
   label,
@@ -28,32 +25,11 @@ export default function PlacesAutocomplete({
   onPlaceSelected,
   type = 'origin',
 }) {
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
-    libraries,
-    language: 'vi',
-    region: 'VN',
-  });
-
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  
-  const autocompleteService = useRef(null);
-  const placesService = useRef(null);
-  const sessionToken = useRef(null);
-  const containerRef = useRef(null);
   const debounceRef = useRef(null);
-
-  // Khởi tạo các service của Google Maps khi script load xong
-  useEffect(() => {
-    if (isLoaded && !loadError && !autocompleteService.current) {
-      autocompleteService.current = new window.google.maps.places.AutocompleteService();
-      // PlacesService cần một DOM element dummy
-      placesService.current = new window.google.maps.places.PlacesService(document.createElement('div'));
-      sessionToken.current = new window.google.maps.places.AutocompleteSessionToken();
-    }
-  }, [isLoaded, loadError]);
+  const containerRef = useRef(null);
 
   // Đóng dropdown khi click ra ngoài
   useEffect(() => {
@@ -66,75 +42,45 @@ export default function PlacesAutocomplete({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchSuggestions = (inputText) => {
-    if (!autocompleteService.current) return;
-    
-    setLoading(true);
-    autocompleteService.current.getPlacePredictions(
-      {
-        input: inputText,
-        sessionToken: sessionToken.current,
-        componentRestrictions: { country: 'vn' }, // Giới hạn ở Việt Nam
-      },
-      (predictions, status) => {
-        setLoading(false);
-        if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
-          setSuggestions(predictions);
-          setOpen(true);
-        } else {
-          setSuggestions([]);
-          setOpen(false);
-        }
-      }
-    );
-  };
-
   const handleChange = (e) => {
     const text = e.target.value;
     onChange(text);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    if (text.length < 2) {
+    if (text.length < 3) {
       setSuggestions([]);
       setOpen(false);
       return;
     }
 
-    // Debounce API calls (tránh gọi API quá nhiều khi gõ nhanh)
-    debounceRef.current = setTimeout(() => {
-      fetchSuggestions(text);
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&limit=5&countrycodes=vn&addressdetails=1`,
+          { headers: { 'Accept-Language': 'vi' } }
+        );
+        const data = await res.json();
+        setSuggestions(data);
+        setOpen(data.length > 0);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setLoading(false);
+      }
     }, 400);
   };
 
-  const handleSelect = (suggestion) => {
-    const address = suggestion.description;
+  const handleSelect = (item) => {
+    const address = item.display_name;
     onChange(address);
+    onPlaceSelected({
+      lat: parseFloat(item.lat),
+      lng: parseFloat(item.lon),
+      address,
+    });
     setOpen(false);
     setSuggestions([]);
-
-    if (!placesService.current) return;
-
-    // Gọi API getDetails để lấy tọa độ (Lat/Lng) của địa điểm vừa chọn
-    placesService.current.getDetails(
-      {
-        placeId: suggestion.place_id,
-        fields: ['geometry', 'name', 'formatted_address'],
-        sessionToken: sessionToken.current,
-      },
-      (place, status) => {
-        // Tái tạo session token mới sau khi đã kết thúc 1 phiên tìm kiếm
-        sessionToken.current = new window.google.maps.places.AutocompleteSessionToken();
-        
-        if (status === window.google.maps.places.PlacesServiceStatus.OK && place?.geometry?.location) {
-          onPlaceSelected({
-            lat: place.geometry.location.lat(),
-            lng: place.geometry.location.lng(),
-            address: place.formatted_address || address,
-          });
-        }
-      }
-    );
   };
 
   const Icon = type === 'origin' ? LocationOnRoundedIcon : FlagRoundedIcon;
@@ -169,12 +115,6 @@ export default function PlacesAutocomplete({
         }}
       />
 
-      {loadError && (
-        <Typography variant="caption" color="error" sx={{ position: 'absolute', bottom: -20, left: 0 }}>
-          Lỗi tải Google Maps API
-        </Typography>
-      )}
-
       {open && suggestions.length > 0 && (
         <Paper
           elevation={8}
@@ -194,44 +134,39 @@ export default function PlacesAutocomplete({
           }}
         >
           <List dense disablePadding>
-            {suggestions.map((item) => {
-              const primaryText = item.structured_formatting.main_text;
-              const secondaryText = item.structured_formatting.secondary_text;
-              
-              return (
-                <ListItem key={item.place_id} disablePadding>
-                  <ListItemButton
-                    onClick={() => handleSelect(item)}
-                    sx={{
-                      py: 1,
-                      px: 1.5,
-                      borderBottom: '1px solid rgba(241,240,239,0.05)',
-                      '&:hover': { bgcolor: 'rgba(245,158,11,0.08)' },
-                    }}
-                  >
-                    <LocationOnRoundedIcon
-                      sx={{ fontSize: 16, color: iconColor, mr: 1, flexShrink: 0 }}
-                    />
-                    <ListItemText
-                      primary={
-                        <Typography variant="body2" noWrap sx={{ color: 'text.primary' }}>
-                          {primaryText}
-                        </Typography>
-                      }
-                      secondary={
-                        <Typography
-                          variant="caption"
-                          noWrap
-                          sx={{ color: 'text.secondary', display: 'block' }}
-                        >
-                          {secondaryText}
-                        </Typography>
-                      }
-                    />
-                  </ListItemButton>
-                </ListItem>
-              );
-            })}
+            {suggestions.map((item, idx) => (
+              <ListItem key={item.place_id || idx} disablePadding>
+                <ListItemButton
+                  onClick={() => handleSelect(item)}
+                  sx={{
+                    py: 1,
+                    px: 1.5,
+                    borderBottom: '1px solid rgba(241,240,239,0.05)',
+                    '&:hover': { bgcolor: 'rgba(245,158,11,0.08)' },
+                  }}
+                >
+                  <LocationOnRoundedIcon
+                    sx={{ fontSize: 16, color: iconColor, mr: 1, flexShrink: 0 }}
+                  />
+                  <ListItemText
+                    primary={
+                      <Typography variant="body2" noWrap sx={{ color: 'text.primary' }}>
+                        {item.display_name.split(',')[0]}
+                      </Typography>
+                    }
+                    secondary={
+                      <Typography
+                        variant="caption"
+                        noWrap
+                        sx={{ color: 'text.secondary', display: 'block' }}
+                      >
+                        {item.display_name.split(',').slice(1, 4).join(',')}
+                      </Typography>
+                    }
+                  />
+                </ListItemButton>
+              </ListItem>
+            ))}
           </List>
         </Paper>
       )}
