@@ -14,9 +14,11 @@ import {
 import LocationOnRoundedIcon from '@mui/icons-material/LocationOnRounded';
 import FlagRoundedIcon from '@mui/icons-material/FlagRounded';
 
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
 /**
- * PlacesAutocomplete – dùng Nominatim (OpenStreetMap) thay Google Places
- * Hoàn toàn miễn phí, không cần API key
+ * PlacesAutocomplete – dùng Google Places Autocomplete API
+ * Requires VITE_GOOGLE_MAPS_API_KEY in .env
  */
 export default function PlacesAutocomplete({
   label,
@@ -30,6 +32,40 @@ export default function PlacesAutocomplete({
   const [open, setOpen] = useState(false);
   const debounceRef = useRef(null);
   const containerRef = useRef(null);
+  const autocompleteServiceRef = useRef(null);
+  const placesServiceRef = useRef(null);
+  const sessionTokenRef = useRef(null);
+
+  // Khởi tạo Google Places service khi API đã load
+  useEffect(() => {
+    function initServices() {
+      if (
+        window.google?.maps?.places?.AutocompleteService &&
+        !autocompleteServiceRef.current
+      ) {
+        autocompleteServiceRef.current =
+          new window.google.maps.places.AutocompleteService();
+        // PlacesService cần một DOM element để hiển thị attributions
+        const dummyDiv = document.createElement('div');
+        placesServiceRef.current = new window.google.maps.places.PlacesService(dummyDiv);
+        sessionTokenRef.current =
+          new window.google.maps.places.AutocompleteSessionToken();
+      }
+    }
+
+    // Nếu Google Maps script đã load sẵn
+    initServices();
+
+    // Lắng nghe sự kiện khi script load xong
+    const interval = setInterval(() => {
+      if (window.google?.maps?.places) {
+        initServices();
+        clearInterval(interval);
+      }
+    }, 300);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Đóng dropdown khi click ra ngoài
   useEffect(() => {
@@ -47,40 +83,75 @@ export default function PlacesAutocomplete({
     onChange(text);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (text.length < 3) {
+    if (text.length < 2) {
       setSuggestions([]);
       setOpen(false);
       return;
     }
 
-    debounceRef.current = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&limit=5&countrycodes=vn&addressdetails=1`,
-          { headers: { 'Accept-Language': 'vi' } }
-        );
-        const data = await res.json();
-        setSuggestions(data);
-        setOpen(data.length > 0);
-      } catch {
+    debounceRef.current = setTimeout(() => {
+      if (!autocompleteServiceRef.current) {
         setSuggestions([]);
-      } finally {
-        setLoading(false);
+        return;
       }
-    }, 400);
+
+      setLoading(true);
+
+      autocompleteServiceRef.current.getPlacePredictions(
+        {
+          input: text,
+          sessionToken: sessionTokenRef.current,
+          componentRestrictions: { country: 'vn' }, // Giới hạn Việt Nam
+          types: ['geocode', 'establishment'],
+        },
+        (predictions, status) => {
+          setLoading(false);
+          if (
+            status === window.google.maps.places.PlacesServiceStatus.OK &&
+            predictions
+          ) {
+            setSuggestions(predictions);
+            setOpen(predictions.length > 0);
+          } else {
+            setSuggestions([]);
+            setOpen(false);
+          }
+        }
+      );
+    }, 300);
   };
 
-  const handleSelect = (item) => {
-    const address = item.display_name;
-    onChange(address);
-    onPlaceSelected({
-      lat: parseFloat(item.lat),
-      lng: parseFloat(item.lon),
-      address,
-    });
-    setOpen(false);
-    setSuggestions([]);
+  const handleSelect = (prediction) => {
+    if (!placesServiceRef.current) return;
+
+    setLoading(true);
+    placesServiceRef.current.getDetails(
+      {
+        placeId: prediction.place_id,
+        sessionToken: sessionTokenRef.current,
+        fields: ['geometry', 'formatted_address', 'name'],
+      },
+      (place, status) => {
+        setLoading(false);
+        if (
+          status === window.google.maps.places.PlacesServiceStatus.OK &&
+          place?.geometry?.location
+        ) {
+          const lat = place.geometry.location.lat();
+          const lng = place.geometry.location.lng();
+          const address = place.formatted_address || prediction.description;
+
+          onChange(address);
+          onPlaceSelected({ lat, lng, address });
+
+          // Tạo session token mới cho lần tìm kiếm tiếp theo
+          sessionTokenRef.current =
+            new window.google.maps.places.AutocompleteSessionToken();
+        }
+        setOpen(false);
+        setSuggestions([]);
+      }
+    );
   };
 
   const Icon = type === 'origin' ? LocationOnRoundedIcon : FlagRoundedIcon;
@@ -134,10 +205,10 @@ export default function PlacesAutocomplete({
           }}
         >
           <List dense disablePadding>
-            {suggestions.map((item, idx) => (
-              <ListItem key={item.place_id || idx} disablePadding>
+            {suggestions.map((prediction, idx) => (
+              <ListItem key={prediction.place_id || idx} disablePadding>
                 <ListItemButton
-                  onClick={() => handleSelect(item)}
+                  onClick={() => handleSelect(prediction)}
                   sx={{
                     py: 1,
                     px: 1.5,
@@ -151,7 +222,8 @@ export default function PlacesAutocomplete({
                   <ListItemText
                     primary={
                       <Typography variant="body2" noWrap sx={{ color: 'text.primary' }}>
-                        {item.display_name.split(',')[0]}
+                        {prediction.structured_formatting?.main_text ||
+                          prediction.description.split(',')[0]}
                       </Typography>
                     }
                     secondary={
@@ -160,7 +232,8 @@ export default function PlacesAutocomplete({
                         noWrap
                         sx={{ color: 'text.secondary', display: 'block' }}
                       >
-                        {item.display_name.split(',').slice(1, 4).join(',')}
+                        {prediction.structured_formatting?.secondary_text ||
+                          prediction.description.split(',').slice(1, 4).join(',')}
                       </Typography>
                     }
                   />
@@ -168,6 +241,23 @@ export default function PlacesAutocomplete({
               </ListItem>
             ))}
           </List>
+
+          {/* Google attribution bắt buộc */}
+          <Box
+            sx={{
+              px: 1.5,
+              py: 0.75,
+              borderTop: '1px solid rgba(241,240,239,0.05)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+            }}
+          >
+            <img
+              src="https://maps.gstatic.com/mapfiles/api-3/images/powered-by-google-on-non-white.png"
+              alt="Powered by Google"
+              style={{ height: 14, opacity: 0.6 }}
+            />
+          </Box>
         </Paper>
       )}
     </Box>

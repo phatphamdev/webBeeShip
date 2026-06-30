@@ -1,66 +1,54 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Typography, Alert, CircularProgress } from '@mui/material';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { GoogleMap, Marker, DirectionsRenderer, useJsApiLoader } from '@react-google-maps/api';
 
-// Fix Leaflet default marker icon bị mất khi dùng với Vite/Webpack
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-// Icon tùy chỉnh màu Amber cho điểm đón
-const originIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-});
+const LIBRARIES = ['places', 'directions'];
 
-const destIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-gold.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-});
+const DEFAULT_CENTER = { lat: 10.7769, lng: 106.7009 }; // TP. HCM
 
-const DEFAULT_CENTER = [10.7769, 106.7009]; // TP. HCM
-
-// Component phụ để tự động fit bounds khi có route
-function FitBounds({ positions }) {
-  const map = useMap();
-  useEffect(() => {
-    if (positions && positions.length >= 2) {
-      map.fitBounds(positions, { padding: [40, 40] });
-    }
-  }, [positions, map]);
-  return null;
-}
+const MAP_STYLES = [
+  { elementType: 'geometry', stylers: [{ color: '#1a1a24' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#a0a0b0' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1a24' }] },
+  { featureType: 'administrative.country', elementType: 'geometry.stroke', stylers: [{ color: '#4b5563' }] },
+  { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#374151' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2d3748' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#374151' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1f2937' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#252535' }] },
+  { featureType: 'road.local', elementType: 'geometry', stylers: [{ color: '#212132' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#1e1e2e' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0f1923' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#3d4654' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#1e2233' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1a2a1a' }] },
+];
 
 /**
- * MapRoute – dùng Leaflet + OpenStreetMap (miễn phí, không cần API key)
- * Tính đường đi qua OSRM (Open Source Routing Machine) API
+ * MapRoute – dùng Google Maps JavaScript API + Directions API
+ * Tự động tính đường đi thực tế và trả về distance_km, duration_min
  *
- * @prop {{ lat, lng }} origin
- * @prop {{ lat, lng }} destination
+ * @prop {{ lat, lng, address }} origin
+ * @prop {{ lat, lng, address }} destination
  * @prop {function} onRouteResult – callback({ distance_km, duration_min })
  */
 export default function MapRoute({ origin, destination, onRouteResult }) {
-  const [routePoints, setRoutePoints] = useState([]); // mảng [lat, lng] cho Polyline
+  const [directions, setDirections] = useState(null);
   const [routeError, setRouteError] = useState('');
   const [loadingRoute, setLoadingRoute] = useState(false);
+  const mapRef = useRef(null);
 
-  // Gọi OSRM để lấy tuyến đường thực tế
+  const { isLoaded, loadError } = useJsApiLoader({
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+    libraries: LIBRARIES,
+  });
+
+  // Tính tuyến đường khi có điểm đón và điểm đến
   useEffect(() => {
-    if (!origin || !destination) {
-      setRoutePoints([]);
+    if (!isLoaded || !origin || !destination) {
+      setDirections(null);
       setRouteError('');
       onRouteResult && onRouteResult(null);
       return;
@@ -69,45 +57,100 @@ export default function MapRoute({ origin, destination, onRouteResult }) {
     setLoadingRoute(true);
     setRouteError('');
 
-    // OSRM public API – hoàn toàn miễn phí
-    const url =
-      `https://router.project-osrm.org/route/v1/driving/` +
-      `${origin.lng},${origin.lat};${destination.lng},${destination.lat}` +
-      `?overview=full&geometries=geojson&steps=false`;
-
-    fetch(url)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.code !== 'Ok' || !data.routes?.length) {
+    const directionsService = new window.google.maps.DirectionsService();
+    directionsService.route(
+      {
+        origin: { lat: origin.lat, lng: origin.lng },
+        destination: { lat: destination.lat, lng: destination.lng },
+        travelMode: window.google.maps.TravelMode.DRIVING,
+        region: 'VN',
+      },
+      (result, status) => {
+        setLoadingRoute(false);
+        if (status === window.google.maps.DirectionsStatus.OK && result) {
+          setDirections(result);
+          const leg = result.routes[0].legs[0];
+          const distance_km = leg.distance.value / 1000;
+          const duration_min = Math.ceil(leg.duration.value / 60);
+          onRouteResult && onRouteResult({ distance_km, duration_min });
+        } else {
+          setDirections(null);
           setRouteError('Không tìm được đường đi giữa hai địa điểm này.');
-          setRoutePoints([]);
           onRouteResult && onRouteResult(null);
-          return;
         }
+      }
+    );
+  }, [isLoaded, origin, destination]);
 
-        const route = data.routes[0];
-        // GeoJSON coordinates là [lng, lat] → đổi thành [lat, lng] cho Leaflet
-        const points = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-        setRoutePoints(points);
+  const onMapLoad = useCallback((map) => {
+    mapRef.current = map;
+  }, []);
 
-        const distance_km = route.distance / 1000;
-        const duration_min = Math.ceil(route.duration / 60);
-        onRouteResult && onRouteResult({ distance_km, duration_min });
-      })
-      .catch(() => {
-        setRouteError('Lỗi kết nối đến dịch vụ tính đường đi. Vui lòng thử lại.');
-        setRoutePoints([]);
-        onRouteResult && onRouteResult(null);
-      })
-      .finally(() => setLoadingRoute(false));
+  // Tính bounds để fit map theo origin/destination
+  useEffect(() => {
+    if (!mapRef.current || !origin || !destination) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    bounds.extend({ lat: origin.lat, lng: origin.lng });
+    bounds.extend({ lat: destination.lat, lng: destination.lng });
+    mapRef.current.fitBounds(bounds, { top: 60, right: 40, bottom: 40, left: 40 });
   }, [origin, destination]);
 
-  const markerPositions =
-    routePoints.length >= 2 ? [routePoints[0], routePoints[routePoints.length - 1]] : null;
+  if (loadError) {
+    return (
+      <Box
+        sx={{
+          width: '100%',
+          height: '100%',
+          minHeight: 350,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 3,
+          bgcolor: 'rgba(26,26,36,0.9)',
+        }}
+      >
+        <Alert severity="error">
+          Lỗi tải Google Maps. Vui lòng kiểm tra API key.
+        </Alert>
+      </Box>
+    );
+  }
+
+  if (!isLoaded) {
+    return (
+      <Box
+        sx={{
+          width: '100%',
+          height: '100%',
+          minHeight: 350,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 3,
+          bgcolor: 'rgba(26,26,36,0.9)',
+        }}
+      >
+        <Box sx={{ textAlign: 'center' }}>
+          <CircularProgress sx={{ color: 'primary.main', mb: 1 }} size={32} />
+          <Typography variant="caption" display="block" color="text.secondary">
+            Đang tải Google Maps...
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
-    <Box sx={{ width: '100%', height: '100%', position: 'relative', borderRadius: 3, overflow: 'hidden' }}>
-      {/* Loading overlay */}
+    <Box
+      sx={{
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        borderRadius: 3,
+        overflow: 'hidden',
+      }}
+    >
+      {/* Loading overlay khi đang tính tuyến đường */}
       {loadingRoute && (
         <Box
           sx={{
@@ -140,58 +183,53 @@ export default function MapRoute({ origin, destination, onRouteResult }) {
         </Box>
       )}
 
-      {/* Leaflet Map */}
-      <MapContainer
+      {/* Google Map */}
+      <GoogleMap
+        mapContainerStyle={{ width: '100%', height: '100%', minHeight: 350, borderRadius: 12 }}
         center={DEFAULT_CENTER}
         zoom={12}
-        style={{ width: '100%', height: '100%', minHeight: 350, borderRadius: 12 }}
-        zoomControl={true}
-        attributionControl={true}
+        onLoad={onMapLoad}
+        options={{
+          styles: MAP_STYLES,
+          disableDefaultUI: false,
+          zoomControl: true,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: true,
+          gestureHandling: 'cooperative',
+        }}
       >
-        {/* OpenStreetMap tiles – hoàn toàn miễn phí */}
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          maxZoom={19}
-        />
-
-        {/* Route polyline màu Amber */}
-        {routePoints.length > 1 && (
-          <Polyline
-            positions={routePoints}
-            pathOptions={{
-              color: '#f59e0b',
-              weight: 5,
-              opacity: 0.9,
-              lineJoin: 'round',
-              lineCap: 'round',
+        {/* Vẽ tuyến đường thực tế từ Google Directions */}
+        {directions && (
+          <DirectionsRenderer
+            directions={directions}
+            options={{
+              suppressMarkers: false,
+              polylineOptions: {
+                strokeColor: '#f59e0b',
+                strokeWeight: 5,
+                strokeOpacity: 0.9,
+              },
             }}
           />
         )}
 
-        {/* Marker điểm đón */}
-        {origin && (
-          <Marker position={[origin.lat, origin.lng]} icon={originIcon}>
-            <Popup>
-              <strong>📍 Điểm đón</strong><br />
-              {origin.address?.split(',').slice(0, 2).join(',')}
-            </Popup>
-          </Marker>
+        {/* Markers khi chưa có tuyến đường */}
+        {!directions && origin && (
+          <Marker
+            position={{ lat: origin.lat, lng: origin.lng }}
+            label={{ text: 'A', color: '#fff', fontWeight: 'bold' }}
+            title={`📍 Điểm đón: ${origin.address}`}
+          />
         )}
-
-        {/* Marker điểm đến */}
-        {destination && (
-          <Marker position={[destination.lat, destination.lng]} icon={destIcon}>
-            <Popup>
-              <strong>🏁 Điểm đến</strong><br />
-              {destination.address?.split(',').slice(0, 2).join(',')}
-            </Popup>
-          </Marker>
+        {!directions && destination && (
+          <Marker
+            position={{ lat: destination.lat, lng: destination.lng }}
+            label={{ text: 'B', color: '#fff', fontWeight: 'bold' }}
+            title={`🏁 Điểm đến: ${destination.address}`}
+          />
         )}
-
-        {/* Tự động zoom vào route */}
-        {markerPositions && <FitBounds positions={routePoints} />}
-      </MapContainer>
+      </GoogleMap>
 
       {/* Overlay hint khi chưa có địa chỉ */}
       {!origin && !destination && (
