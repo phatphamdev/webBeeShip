@@ -14,12 +14,8 @@ import {
 import LocationOnRoundedIcon from '@mui/icons-material/LocationOnRounded';
 import FlagRoundedIcon from '@mui/icons-material/FlagRounded';
 
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY;
 
-/**
- * PlacesAutocomplete – dùng Google Places Autocomplete API
- * Requires VITE_GOOGLE_MAPS_API_KEY in .env
- */
 export default function PlacesAutocomplete({
   label,
   value,
@@ -32,40 +28,6 @@ export default function PlacesAutocomplete({
   const [open, setOpen] = useState(false);
   const debounceRef = useRef(null);
   const containerRef = useRef(null);
-  const autocompleteServiceRef = useRef(null);
-  const placesServiceRef = useRef(null);
-  const sessionTokenRef = useRef(null);
-
-  // Khởi tạo Google Places service khi API đã load
-  useEffect(() => {
-    function initServices() {
-      if (
-        window.google?.maps?.places?.AutocompleteService &&
-        !autocompleteServiceRef.current
-      ) {
-        autocompleteServiceRef.current =
-          new window.google.maps.places.AutocompleteService();
-        // PlacesService cần một DOM element để hiển thị attributions
-        const dummyDiv = document.createElement('div');
-        placesServiceRef.current = new window.google.maps.places.PlacesService(dummyDiv);
-        sessionTokenRef.current =
-          new window.google.maps.places.AutocompleteSessionToken();
-      }
-    }
-
-    // Nếu Google Maps script đã load sẵn
-    initServices();
-
-    // Lắng nghe sự kiện khi script load xong
-    const interval = setInterval(() => {
-      if (window.google?.maps?.places) {
-        initServices();
-        clearInterval(interval);
-      }
-    }, 300);
-
-    return () => clearInterval(interval);
-  }, []);
 
   // Đóng dropdown khi click ra ngoài
   useEffect(() => {
@@ -89,69 +51,83 @@ export default function PlacesAutocomplete({
       return;
     }
 
-    debounceRef.current = setTimeout(() => {
-      if (!autocompleteServiceRef.current) {
-        setSuggestions([]);
-        return;
-      }
-
+    debounceRef.current = setTimeout(async () => {
       setLoading(true);
-
-      autocompleteServiceRef.current.getPlacePredictions(
-        {
-          input: text,
-          sessionToken: sessionTokenRef.current,
-          componentRestrictions: { country: 'vn' }, // Giới hạn Việt Nam
-          types: ['geocode', 'establishment'],
-        },
-        (predictions, status) => {
-          setLoading(false);
-          if (
-            status === window.google.maps.places.PlacesServiceStatus.OK &&
-            predictions
-          ) {
-            setSuggestions(predictions);
-            setOpen(predictions.length > 0);
-          } else {
-            setSuggestions([]);
-            setOpen(false);
-          }
+      try {
+        const response = await fetch(
+          `https://rsapi.goong.io/Place/AutoComplete?api_key=${GOONG_API_KEY}&input=${encodeURIComponent(text)}`
+        );
+        const data = await response.json();
+          
+        if (data.status === 'OK' && data.predictions && data.predictions.length > 0) {
+          setSuggestions(data.predictions);
+          setOpen(true);
+        } else {
+          setSuggestions([]);
+          setOpen(false);
         }
-      );
+      } catch (error) {
+        console.error('Error fetching Goong autocomplete suggestions:', error);
+        setSuggestions([]);
+        setOpen(false);
+      } finally {
+        setLoading(false);
+      }
     }, 300);
   };
 
-  const handleSelect = (prediction) => {
-    if (!placesServiceRef.current) return;
-
+  const handleSelect = async (suggestion) => {
     setLoading(true);
-    placesServiceRef.current.getDetails(
-      {
-        placeId: prediction.place_id,
-        sessionToken: sessionTokenRef.current,
-        fields: ['geometry', 'formatted_address', 'name'],
-      },
-      (place, status) => {
-        setLoading(false);
-        if (
-          status === window.google.maps.places.PlacesServiceStatus.OK &&
-          place?.geometry?.location
-        ) {
-          const lat = place.geometry.location.lat();
-          const lng = place.geometry.location.lng();
-          const address = place.formatted_address || prediction.description;
+    try {
+      // 1. Fetch chi tiết địa điểm bằng API v2/place/detail
+      const response = await fetch(
+        `https://rsapi.goong.io/v2/place/detail?api_key=${GOONG_API_KEY}&place_id=${suggestion.place_id}`
+      );
+      const data = await response.json();
 
-          onChange(address);
-          onPlaceSelected({ lat, lng, address });
-
-          // Tạo session token mới cho lần tìm kiếm tiếp theo
-          sessionTokenRef.current =
-            new window.google.maps.places.AutocompleteSessionToken();
+      if (data.status === 'OK' && data.result) {
+        const place = data.result;
+        
+        let lat = null;
+        let lng = null;
+        if (place.geometry && place.geometry.location) {
+          lat = place.geometry.location.lat;
+          lng = place.geometry.location.lng;
         }
-        setOpen(false);
-        setSuggestions([]);
+
+        const address = place.formatted_address || place.name || suggestion.description;
+        
+        // 2. Tối ưu địa điểm: gọi thêm v2/place/children để lấy các điểm con (như cổng, tòa nhà con...)
+        let children = [];
+        try {
+          const childrenRes = await fetch(
+            `https://rsapi.goong.io/v2/place/children?api_key=${GOONG_API_KEY}&parent_id=${suggestion.place_id}`
+          );
+          const childrenData = await childrenRes.json();
+          if (childrenData && childrenData.result) {
+            children = childrenData.result;
+            // Có thể dùng điểm con đầu tiên để chính xác vị trí giao hàng nếu có
+            // if (children.length > 0 && children[0].geometry) {
+            //   lat = children[0].geometry.location.lat;
+            //   lng = children[0].geometry.location.lng;
+            // }
+          }
+        } catch (e) {
+          console.error('Error fetching children places:', e);
+        }
+
+        if (lat !== null && lng !== null) {
+          onChange(address);
+          onPlaceSelected({ lat, lng, address, children });
+        }
       }
-    );
+      setOpen(false);
+      setSuggestions([]);
+    } catch (error) {
+      console.error('Error fetching Goong place details V2:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const Icon = type === 'origin' ? LocationOnRoundedIcon : FlagRoundedIcon;
@@ -205,59 +181,44 @@ export default function PlacesAutocomplete({
           }}
         >
           <List dense disablePadding>
-            {suggestions.map((prediction, idx) => (
-              <ListItem key={prediction.place_id || idx} disablePadding>
-                <ListItemButton
-                  onClick={() => handleSelect(prediction)}
-                  sx={{
-                    py: 1,
-                    px: 1.5,
-                    borderBottom: '1px solid rgba(241,240,239,0.05)',
-                    '&:hover': { bgcolor: 'rgba(245,158,11,0.08)' },
-                  }}
-                >
-                  <LocationOnRoundedIcon
-                    sx={{ fontSize: 16, color: iconColor, mr: 1, flexShrink: 0 }}
-                  />
-                  <ListItemText
-                    primary={
-                      <Typography variant="body2" noWrap sx={{ color: 'text.primary' }}>
-                        {prediction.structured_formatting?.main_text ||
-                          prediction.description.split(',')[0]}
-                      </Typography>
-                    }
-                    secondary={
-                      <Typography
-                        variant="caption"
-                        noWrap
-                        sx={{ color: 'text.secondary', display: 'block' }}
-                      >
-                        {prediction.structured_formatting?.secondary_text ||
-                          prediction.description.split(',').slice(1, 4).join(',')}
-                      </Typography>
-                    }
-                  />
-                </ListItemButton>
-              </ListItem>
-            ))}
+            {suggestions.map((suggestion, idx) => {
+              const mainText = suggestion.structured_formatting?.main_text || suggestion.description;
+              const secondaryText = suggestion.structured_formatting?.secondary_text || '';
+              return (
+                <ListItem key={suggestion.place_id || idx} disablePadding>
+                  <ListItemButton
+                    onClick={() => handleSelect(suggestion)}
+                    sx={{
+                      py: 1,
+                      px: 1.5,
+                      borderBottom: '1px solid rgba(241,240,239,0.05)',
+                      '&:hover': { bgcolor: 'rgba(245,158,11,0.08)' },
+                    }}
+                  >
+                    <LocationOnRoundedIcon
+                      sx={{ fontSize: 16, color: iconColor, mr: 1, flexShrink: 0 }}
+                    />
+                    <ListItemText
+                      primary={
+                        <Typography variant="body2" noWrap sx={{ color: 'text.primary' }}>
+                          {mainText}
+                        </Typography>
+                      }
+                      secondary={
+                        <Typography
+                          variant="caption"
+                          noWrap
+                          sx={{ color: 'text.secondary', display: 'block' }}
+                        >
+                          {secondaryText}
+                        </Typography>
+                      }
+                    />
+                  </ListItemButton>
+                </ListItem>
+              );
+            })}
           </List>
-
-          {/* Google attribution bắt buộc */}
-          <Box
-            sx={{
-              px: 1.5,
-              py: 0.75,
-              borderTop: '1px solid rgba(241,240,239,0.05)',
-              display: 'flex',
-              justifyContent: 'flex-end',
-            }}
-          >
-            <img
-              src="https://maps.gstatic.com/mapfiles/api-3/images/powered-by-google-on-non-white.png"
-              alt="Powered by Google"
-              style={{ height: 14, opacity: 0.6 }}
-            />
-          </Box>
         </Paper>
       )}
     </Box>
