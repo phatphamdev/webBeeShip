@@ -123,7 +123,19 @@ export default function MapRoute({ origin, destination, onRouteResult, waypoints
             routeData = trip;
           }
         } else {
-          // Chỉ có origin và destination, dùng Directions v2 API
+          // Chỉ có origin và destination
+          // 1. Gọi Distance Matrix API v2 để tính toán khoảng cách/thời gian cực kì chính xác
+          const dmResponse = await fetch(
+            `https://rsapi.goong.io/v2/distancematrix?origins=${originLat},${originLng}&destinations=${destLat},${destLng}&vehicle=bike&api_key=${GOONG_API_KEY}`
+          );
+          const dmData = await dmResponse.json();
+          if (dmData.rows && dmData.rows.length > 0 && dmData.rows[0].elements[0].status === 'OK') {
+            const element = dmData.rows[0].elements[0];
+            distance_km = element.distance.value / 1000;
+            duration_min = Math.ceil(element.duration.value / 60);
+          }
+
+          // 2. Gọi Directions API v2 để lấy polyline vẽ lên bản đồ
           const response = await fetch(
             `https://rsapi.goong.io/v2/direction?origin=${originLat},${originLng}&destination=${destLat},${destLng}&vehicle=bike&api_key=${GOONG_API_KEY}`
           );
@@ -131,10 +143,13 @@ export default function MapRoute({ origin, destination, onRouteResult, waypoints
 
           if (data.routes && data.routes.length > 0) {
             const route = data.routes[0];
-            const leg = route.legs[0];
             
-            distance_km = leg.distance.value / 1000;
-            duration_min = Math.ceil(leg.duration.value / 60);
+            // Nếu Distance Matrix lỗi, fallback dùng distance của Direction
+            if (distance_km === 0) {
+              const leg = route.legs[0];
+              distance_km = leg.distance.value / 1000;
+              duration_min = Math.ceil(leg.duration.value / 60);
+            }
             
             // Giải mã overview_polyline
             const encodedPolyline = route.overview_polyline.points;
@@ -213,8 +228,8 @@ export default function MapRoute({ origin, destination, onRouteResult, waypoints
       >
         {/* Sửa lại bản đồ sáng màu hơn để thấy rõ địa điểm, dễ quan sát giao thông */}
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
         />
         
         <MapFitBounds origin={origin} destination={destination} />

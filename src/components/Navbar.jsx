@@ -70,7 +70,17 @@ export default function Navbar() {
                 boxShadow: '0 0 16px rgba(245, 158, 11, 0.35)',
               }}
             >
-              <LocalTaxiRoundedIcon sx={{ color: '#1a1207', fontSize: 20 }} />
+              <Box
+                component="img"
+                src={`${import.meta.env.BASE_URL}iconBee.jpg`}
+                alt="BeeShip Icon"
+                sx={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  borderRadius: 'inherit'
+                }}
+              />
             </Box>
             <Typography
               variant="h6"

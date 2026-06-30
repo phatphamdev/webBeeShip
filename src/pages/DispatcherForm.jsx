@@ -18,6 +18,7 @@ import {
   CircularProgress,
   Tooltip,
   Grid,
+  TextField,
 } from '@mui/material';
 import RouteRoundedIcon from '@mui/icons-material/RouteRounded';
 import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded';
@@ -36,13 +37,20 @@ const formatVND = (amount) =>
   );
 
 /* ── Price Calculation Logic ──────────────────────────────── */
-function calculatePrice(service, activeSurcharges, distance_km) {
+function calculatePrice(service, activeSurcharges, distance_km, itemCount = 1) {
   if (!service || !distance_km) return null;
 
   const { base_price, base_km, per_km_price } = service;
   const extraKm = Math.max(0, distance_km - base_km);
   const extraFare = extraKm * per_km_price;
-  const subtotal = base_price + extraFare;
+  let subtotal = base_price + extraFare;
+
+  // Extra item fee logic
+  let extraItemFee = 0;
+  if (itemCount > 4) {
+    extraItemFee = Math.ceil((itemCount - 4) / 3) * 3000;
+  }
+  subtotal += extraItemFee;
 
   // Apply MULTIPLIER surcharges first
   const multipliers = activeSurcharges.filter((s) => s.type === 'MULTIPLIER');
@@ -61,6 +69,8 @@ function calculatePrice(service, activeSurcharges, distance_km) {
     base_price,
     extra_km: extraKm,
     extra_fare: extraFare,
+    extra_item_fee: extraItemFee,
+    item_count: itemCount,
     subtotal,
     multipliers,
     fixeds,
@@ -133,6 +143,7 @@ export default function DispatcherForm() {
   // Selections
   const [selectedServiceId, setSelectedServiceId] = useState('');
   const [activeSurchargeIds, setActiveSurchargeIds] = useState(new Set());
+  const [itemCount, setItemCount] = useState(1);
 
   // Price
   const [priceBreakdown, setPriceBreakdown] = useState(null);
@@ -174,7 +185,7 @@ export default function DispatcherForm() {
     }
     const service = services.find((s) => s.id === selectedServiceId);
     const activeSurchargeList = surcharges.filter((s) => activeSurchargeIds.has(s.id));
-    const result = calculatePrice(service, activeSurchargeList, routeInfo.distance_km);
+    const result = calculatePrice(service, activeSurchargeList, routeInfo.distance_km, itemCount);
     setPriceBreakdown(result);
 
     // Trigger pulse animation
@@ -183,7 +194,7 @@ export default function DispatcherForm() {
       void priceRef.current.offsetWidth; // reflow
       priceRef.current.classList.add('price-pulse');
     }
-  }, [routeInfo, selectedServiceId, activeSurchargeIds, services, surcharges]);
+  }, [routeInfo, selectedServiceId, activeSurchargeIds, services, surcharges, itemCount]);
 
   /* ── Handlers ───────────────────────────────────────────── */
   const handleOriginSelected = useCallback((place) => {
@@ -299,6 +310,19 @@ export default function DispatcherForm() {
                     ))}
                   </Select>
                 </FormControl>
+              )}
+
+              {selectedService && (selectedService.name.toLowerCase().includes('giao hàng') || selectedService.name.toLowerCase().includes('giao nước')) && (
+                <Box sx={{ mt: 2.5 }}>
+                  <TextField
+                    fullWidth
+                    type="number"
+                    label="Số lượng (items/ly)"
+                    value={itemCount}
+                    onChange={(e) => setItemCount(Math.max(1, parseInt(e.target.value) || 1))}
+                    inputProps={{ min: 1 }}
+                  />
+                </Box>
               )}
 
               {selectedService && (
@@ -431,6 +455,13 @@ export default function DispatcherForm() {
                     <PriceRow
                       label={`${priceBreakdown.extra_km.toFixed(2)} km vượt (×${formatVND(selectedService?.per_km_price)}/km)`}
                       value={formatVND(priceBreakdown.extra_fare)}
+                    />
+                  )}
+
+                  {priceBreakdown.extra_item_fee > 0 && (
+                    <PriceRow
+                      label={`Phụ phí số lượng (${priceBreakdown.item_count} items/ly)`}
+                      value={`+${formatVND(priceBreakdown.extra_item_fee)}`}
                     />
                   )}
 
