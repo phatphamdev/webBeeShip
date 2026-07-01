@@ -346,88 +346,6 @@ export default function DispatcherForm() {
             </CardContent>
           </Card>
 
-          {/* Surcharges */}
-          {!loadingData && surcharges.length > 0 && (
-            <Card variant="outlined">
-              <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-                <Typography variant="subtitle1" fontWeight={700} mb={2} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <TuneRoundedIcon sx={{ color: 'primary.main', fontSize: 20 }} />
-                  Phụ phí
-                </Typography>
-                <FormGroup>
-                  {surcharges.map((s) => (
-                    <FormControlLabel
-                      key={s.id}
-                      control={
-                        <Switch
-                          checked={activeSurchargeIds.has(s.id)}
-                          onChange={() => toggleSurcharge(s.id)}
-                          size="small"
-                          sx={{
-                            '& .MuiSwitch-switchBase.Mui-checked': { color: 'primary.main' },
-                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                              backgroundColor: 'primary.main',
-                            },
-                          }}
-                        />
-                      }
-                      label={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography variant="body2">{s.name}</Typography>
-                          <Tooltip
-                            title={
-                              s.type === 'MULTIPLIER'
-                                ? `Nhân giá × ${s.value}`
-                                : `Cộng thêm ${formatVND(s.value)}`
-                            }
-                          >
-                            <Chip
-                              label={
-                                s.type === 'MULTIPLIER'
-                                  ? `×${s.value}`
-                                  : `+${formatVND(s.value)}`
-                              }
-                              size="small"
-                              sx={{
-                                fontSize: '0.65rem',
-                                height: 18,
-                                fontWeight: 700,
-                                bgcolor:
-                                  s.type === 'MULTIPLIER'
-                                    ? 'rgba(251,146,60,0.15)'
-                                    : 'rgba(6,182,212,0.12)',
-                                color:
-                                  s.type === 'MULTIPLIER' ? 'warning.main' : 'secondary.main',
-                              }}
-                            />
-                          </Tooltip>
-                          <InfoOutlinedIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
-                        </Box>
-                      }
-                      sx={{ mb: 0.5 }}
-                    />
-                  ))}
-                </FormGroup>
-              </CardContent>
-            </Card>
-          )}
-        </Box>
-      </Grid>
-
-      {/* ── RIGHT COLUMN: Map + Price ── */}
-      <Grid size={{ xs: 12, md: 7, lg: 8 }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, height: '100%' }}>
-          {/* Map */}
-          <Card variant="outlined" sx={{ flex: 1, minHeight: { xs: 300, md: 400 } }}>
-            <CardContent sx={{ p: 1.5, height: '100%', '&:last-child': { pb: 1.5 } }}>
-              <MapRoute
-                origin={origin}
-                destination={destination}
-                onRouteResult={handleRouteResult}
-              />
-            </CardContent>
-          </Card>
-
           {/* Price Breakdown */}
           {priceBreakdown ? (
             <Card
@@ -538,6 +456,88 @@ export default function DispatcherForm() {
               </Alert>
             )
           )}
+
+          {/* Surcharges */}
+          {!loadingData && surcharges.length > 0 && (
+            <Card variant="outlined">
+              <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
+                <Typography variant="subtitle1" fontWeight={700} mb={2} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <TuneRoundedIcon sx={{ color: 'primary.main', fontSize: 20 }} />
+                  Phụ phí
+                </Typography>
+                <FormGroup>
+                  {surcharges.map((s) => (
+                    <FormControlLabel
+                      key={s.id}
+                      control={
+                        <Switch
+                          checked={activeSurchargeIds.has(s.id)}
+                          onChange={() => toggleSurcharge(s.id)}
+                          size="small"
+                          sx={{
+                            '& .MuiSwitch-switchBase.Mui-checked': { color: 'primary.main' },
+                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                              backgroundColor: 'primary.main',
+                            },
+                          }}
+                        />
+                      }
+                      label={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="body2">{s.name}</Typography>
+                          <Tooltip
+                            title={
+                              s.type === 'MULTIPLIER'
+                                ? `Nhân giá × ${s.value}`
+                                : `Cộng thêm ${formatVND(s.value)}`
+                            }
+                          >
+                            <Chip
+                              label={
+                                s.type === 'MULTIPLIER'
+                                  ? `×${s.value}`
+                                  : `+${formatVND(s.value)}`
+                              }
+                              size="small"
+                              sx={{
+                                fontSize: '0.65rem',
+                                height: 18,
+                                fontWeight: 700,
+                                bgcolor:
+                                  s.type === 'MULTIPLIER'
+                                    ? 'rgba(251,146,60,0.15)'
+                                    : 'rgba(6,182,212,0.12)',
+                                color:
+                                  s.type === 'MULTIPLIER' ? 'warning.main' : 'secondary.main',
+                              }}
+                            />
+                          </Tooltip>
+                          <InfoOutlinedIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                        </Box>
+                      }
+                      sx={{ mb: 0.5 }}
+                    />
+                  ))}
+                </FormGroup>
+              </CardContent>
+            </Card>
+          )}
+        </Box>
+      </Grid>
+
+      {/* ── RIGHT COLUMN: Map + Price ── */}
+      <Grid size={{ xs: 12, md: 7, lg: 8 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, height: '100%' }}>
+          {/* Map */}
+          <Card variant="outlined" sx={{ flex: 1, minHeight: { xs: 300, md: 400 } }}>
+            <CardContent sx={{ p: 1.5, height: '100%', '&:last-child': { pb: 1.5 } }}>
+              <MapRoute
+                origin={origin}
+                destination={destination}
+                onRouteResult={handleRouteResult}
+              />
+            </CardContent>
+          </Card>
         </Box>
       </Grid>
     </Grid>
