@@ -233,51 +233,6 @@ export default function DispatcherForm() {
             </Alert>
           )}
 
-          {/* Address Inputs */}
-          <Card variant="outlined" sx={{ overflow: 'visible' }}>
-            <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-              <Typography variant="subtitle1" fontWeight={700} mb={2} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <RouteRoundedIcon sx={{ color: 'primary.main', fontSize: 20 }} />
-                Hành trình
-              </Typography>
-
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                <PlacesAutocomplete
-                  label="Điểm đón"
-                  value={originText}
-                  onChange={setOriginText}
-                  onPlaceSelected={handleOriginSelected}
-                  type="origin"
-                />
-                <PlacesAutocomplete
-                  label="Điểm đến"
-                  value={destinationText}
-                  onChange={setDestinationText}
-                  onPlaceSelected={handleDestinationSelected}
-                  type="destination"
-                />
-              </Box>
-
-              {/* Route info chips */}
-              {routeInfo && (
-                <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
-                  <Chip
-                    icon={<RouteRoundedIcon />}
-                    label={`${routeInfo.distance_km.toFixed(1)} km`}
-                    size="small"
-                    sx={{ bgcolor: 'rgba(6,182,212,0.12)', color: 'secondary.main', fontWeight: 700 }}
-                  />
-                  <Chip
-                    icon={<AccessTimeRoundedIcon />}
-                    label={`~${routeInfo.duration_min} phút`}
-                    size="small"
-                    sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: 'primary.main', fontWeight: 700 }}
-                  />
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-
           {/* Service Select */}
           <Card variant="outlined">
             <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
@@ -340,6 +295,51 @@ export default function DispatcherForm() {
                     value={formatVND(selectedService.per_km_price)}
                     unit="/km"
                     color="secondary.main"
+                  />
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Address Inputs */}
+          <Card variant="outlined" sx={{ overflow: 'visible' }}>
+            <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
+              <Typography variant="subtitle1" fontWeight={700} mb={2} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <RouteRoundedIcon sx={{ color: 'primary.main', fontSize: 20 }} />
+                Hành trình
+              </Typography>
+
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <PlacesAutocomplete
+                  label="Điểm đón"
+                  value={originText}
+                  onChange={setOriginText}
+                  onPlaceSelected={handleOriginSelected}
+                  type="origin"
+                />
+                <PlacesAutocomplete
+                  label="Điểm đến"
+                  value={destinationText}
+                  onChange={setDestinationText}
+                  onPlaceSelected={handleDestinationSelected}
+                  type="destination"
+                />
+              </Box>
+
+              {/* Route info chips */}
+              {routeInfo && (
+                <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
+                  <Chip
+                    icon={<RouteRoundedIcon />}
+                    label={`${routeInfo.distance_km.toFixed(1)} km`}
+                    size="small"
+                    sx={{ bgcolor: 'rgba(6,182,212,0.12)', color: 'secondary.main', fontWeight: 700 }}
+                  />
+                  <Chip
+                    icon={<AccessTimeRoundedIcon />}
+                    label={`~${routeInfo.duration_min} phút`}
+                    size="small"
+                    sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: 'primary.main', fontWeight: 700 }}
                   />
                 </Box>
               )}
