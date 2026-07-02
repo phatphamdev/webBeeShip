@@ -40,6 +40,33 @@ export default function PlacesAutocomplete({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  /* ── Parse tọa độ DMS: "9°38'24.8"N 105°58'08.2"E" → {lat, lng} ── */
+  const parseDMS = (text) => {
+    // Hỗ trợ ký tự °, ′, ″, ', ", và dạng viết tắt
+    const dmsRegex =
+      /(\d+)[°º]\s*(\d+)[''′]\s*([\d.]+)["""″]?\s*([NSns])\s*[,\s]\s*(\d+)[°º]\s*(\d+)[''′]\s*([\d.]+)["""″]?\s*([EWew])/;
+    const match = text.trim().match(dmsRegex);
+    if (!match) return null;
+    const [, dLat, mLat, sLat, dirLat, dLng, mLng, sLng, dirLng] = match;
+    let lat = parseFloat(dLat) + parseFloat(mLat) / 60 + parseFloat(sLat) / 3600;
+    let lng = parseFloat(dLng) + parseFloat(mLng) / 60 + parseFloat(sLng) / 3600;
+    if (/[Ss]/.test(dirLat)) lat = -lat;
+    if (/[Ww]/.test(dirLng)) lng = -lng;
+    return { lat, lng };
+  };
+
+  /* ── Parse tọa độ Decimal: "9.6402, 105.9689" → {lat, lng} ── */
+  const parseDecimal = (text) => {
+    const decimalRegex = /^(-?\d{1,3}\.?\d*)\s*[,\s]\s*(-?\d{1,3}\.?\d*)$/;
+    const match = text.trim().match(decimalRegex);
+    if (!match) return null;
+    const lat = parseFloat(match[1]);
+    const lng = parseFloat(match[2]);
+    // Kiểm tra range hợp lệ
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return { lat, lng };
+  };
+
   const handleChange = (e) => {
     const text = e.target.value;
     onChange(text);
@@ -52,6 +79,35 @@ export default function PlacesAutocomplete({
     }
 
     debounceRef.current = setTimeout(async () => {
+      // Ưu tiên: kiểm tra có phải tọa độ DMS hoặc Decimal không
+      const coordsDMS = parseDMS(text);
+      const coordsDecimal = !coordsDMS ? parseDecimal(text) : null;
+      const coords = coordsDMS || coordsDecimal;
+
+      if (coords) {
+        // Người dùng nhập tọa độ → dùng Reverse Geocode V2 trực tiếp
+        setLoading(true);
+        setSuggestions([]);
+        setOpen(false);
+        try {
+          const response = await fetch(
+            `https://rsapi.goong.io/v2/geocode?latlng=${coords.lat},${coords.lng}&api_key=${GOONG_API_KEY}`
+          );
+          const data = await response.json();
+          if (data.results && data.results.length > 0) {
+            const address = data.results[0].formatted_address || `${coords.lat}, ${coords.lng}`;
+            onChange(address);
+            onPlaceSelected({ lat: coords.lat, lng: coords.lng, address });
+          }
+        } catch (error) {
+          console.error('Reverse Geocode V2 từ tọa độ thất bại:', error);
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Không phải tọa độ → autocomplete bình thường
       setLoading(true);
       try {
         const response = await fetch(
@@ -73,58 +129,92 @@ export default function PlacesAutocomplete({
       } finally {
         setLoading(false);
       }
-    }, 300);
+    }, 400);
+  };
+
+  /* ── Forward Geocode V2: địa chỉ → tọa độ ──────────────── */
+  const forwardGeocode = async (address) => {
+    const response = await fetch(
+      `https://rsapi.goong.io/v2/geocode?address=${encodeURIComponent(address)}&api_key=${GOONG_API_KEY}`
+    );
+    const data = await response.json();
+    if (data.results && data.results.length > 0) {
+      const loc = data.results[0].geometry.location;
+      const formattedAddress = data.results[0].formatted_address || address;
+      return { lat: loc.lat, lng: loc.lng, address: formattedAddress };
+    }
+    return null;
+  };
+
+  /* ── Reverse Geocode V2: tọa độ → địa chỉ ──────────────── */
+  const reverseGeocode = async (lat, lng) => {
+    const response = await fetch(
+      `https://rsapi.goong.io/v2/geocode?latlng=${lat},${lng}&api_key=${GOONG_API_KEY}`
+    );
+    const data = await response.json();
+    if (data.results && data.results.length > 0) {
+      return data.results[0].formatted_address || `${lat}, ${lng}`;
+    }
+    return `${lat}, ${lng}`;
   };
 
   const handleSelect = async (suggestion) => {
     setLoading(true);
     try {
-      // 1. Fetch chi tiết địa điểm bằng API v2/place/detail
-      const response = await fetch(
-        `https://rsapi.goong.io/v2/place/detail?api_key=${GOONG_API_KEY}&place_id=${suggestion.place_id}`
-      );
-      const data = await response.json();
+      let lat = null;
+      let lng = null;
+      let address = suggestion.description;
 
-      if (data.status === 'OK' && data.result) {
-        const place = data.result;
-        
-        let lat = null;
-        let lng = null;
-        if (place.geometry && place.geometry.location) {
-          lat = place.geometry.location.lat;
-          lng = place.geometry.location.lng;
+      // Bước 1: Forward Geocode V2 – dùng description của suggestion để lấy tọa độ
+      try {
+        const geocoded = await forwardGeocode(suggestion.description);
+        if (geocoded) {
+          lat = geocoded.lat;
+          lng = geocoded.lng;
+          address = geocoded.address;
         }
+      } catch (e) {
+        console.warn('Forward Geocode V2 thất bại, thử Place Detail V2...', e);
+      }
 
-        const address = place.formatted_address || place.name || suggestion.description;
-        
-        // 2. Tối ưu địa điểm: gọi thêm v2/place/children để lấy các điểm con (như cổng, tòa nhà con...)
-        let children = [];
+      // Bước 2: Fallback – Place Detail V2 nếu Forward Geocode không trả về kết quả
+      if (lat === null || lng === null) {
         try {
-          const childrenRes = await fetch(
-            `https://rsapi.goong.io/v2/place/children?api_key=${GOONG_API_KEY}&parent_id=${suggestion.place_id}`
+          const response = await fetch(
+            `https://rsapi.goong.io/v2/place/detail?api_key=${GOONG_API_KEY}&place_id=${suggestion.place_id}`
           );
-          const childrenData = await childrenRes.json();
-          if (childrenData && childrenData.result) {
-            children = childrenData.result;
-            // Có thể dùng điểm con đầu tiên để chính xác vị trí giao hàng nếu có
-            // if (children.length > 0 && children[0].geometry) {
-            //   lat = children[0].geometry.location.lat;
-            //   lng = children[0].geometry.location.lng;
-            // }
+          const data = await response.json();
+          if (data.status === 'OK' && data.result?.geometry?.location) {
+            lat = data.result.geometry.location.lat;
+            lng = data.result.geometry.location.lng;
+            address = data.result.formatted_address || data.result.name || address;
           }
         } catch (e) {
-          console.error('Error fetching children places:', e);
-        }
-
-        if (lat !== null && lng !== null) {
-          onChange(address);
-          onPlaceSelected({ lat, lng, address, children });
+          console.warn('Place Detail V2 thất bại, thử Reverse Geocode V2...', e);
         }
       }
+
+      // Bước 3: Reverse Geocode V2 – nếu đã có tọa độ, xác nhận lại địa chỉ chính xác
+      if (lat !== null && lng !== null) {
+        try {
+          const reversedAddress = await reverseGeocode(lat, lng);
+          if (reversedAddress && reversedAddress !== `${lat}, ${lng}`) {
+            address = reversedAddress;
+          }
+        } catch (e) {
+          console.warn('Reverse Geocode V2 thất bại, dùng địa chỉ hiện có.', e);
+        }
+      }
+
+      if (lat !== null && lng !== null) {
+        onChange(address);
+        onPlaceSelected({ lat, lng, address });
+      }
+
       setOpen(false);
       setSuggestions([]);
     } catch (error) {
-      console.error('Error fetching Goong place details V2:', error);
+      console.error('Lỗi khi xử lý địa điểm:', error);
     } finally {
       setLoading(false);
     }
