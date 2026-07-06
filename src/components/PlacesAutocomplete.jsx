@@ -227,6 +227,7 @@ export default function PlacesAutocomplete({
     <Box ref={containerRef} sx={{ position: 'relative' }}>
       <TextField
         fullWidth
+        size="small"
         label={label}
         value={value}
         onChange={handleChange}

@@ -37,7 +37,7 @@ const formatVND = (amount) =>
   );
 
 /* ── Price Calculation Logic ──────────────────────────────── */
-function calculatePrice(service, activeSurcharges, distance_km, itemCount = 1) {
+function calculatePrice(service, activeSurcharges, distance_km, itemCount = 1, customSurcharge = 0) {
   if (!service || !distance_km) return null;
 
   const { base_price, base_km, per_km_price } = service;
@@ -62,7 +62,9 @@ function calculatePrice(service, activeSurcharges, distance_km, itemCount = 1) {
   }
 
   // Then add FIXED surcharges
-  const fixedTotal = fixeds.reduce((sum, f) => sum + f.value, 0);
+  let fixedTotal = fixeds.reduce((sum, f) => sum + f.value, 0);
+  fixedTotal += customSurcharge;
+
   const total = afterMultiplier + fixedTotal;
 
   return {
@@ -76,51 +78,9 @@ function calculatePrice(service, activeSurcharges, distance_km, itemCount = 1) {
     fixeds,
     after_multiplier: afterMultiplier,
     fixed_total: fixedTotal,
+    custom_surcharge: customSurcharge,
     total,
   };
-}
-
-/* ── Small stat card ──────────────────────────────────────── */
-function StatCard({ icon, label, value, unit, color = 'primary.main' }) {
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1.5,
-        p: 1.5,
-        borderRadius: 2,
-        bgcolor: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(241,240,239,0.07)',
-      }}
-    >
-      <Box
-        sx={{
-          width: 36,
-          height: 36,
-          borderRadius: 1.5,
-          bgcolor: `${color}18`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        {icon}
-      </Box>
-      <Box>
-        <Typography variant="caption" color="text.secondary" display="block">
-          {label}
-        </Typography>
-        <Typography variant="subtitle2" fontWeight={700} color={color}>
-          {value}{' '}
-          <Box component="span" sx={{ fontWeight: 400, fontSize: '0.75rem', color: 'text.secondary' }}>
-            {unit}
-          </Box>
-        </Typography>
-      </Box>
-    </Box>
-  );
 }
 
 /* ── Main Component ───────────────────────────────────────── */
@@ -144,6 +104,8 @@ export default function DispatcherForm() {
   const [selectedServiceId, setSelectedServiceId] = useState('');
   const [activeSurchargeIds, setActiveSurchargeIds] = useState(new Set());
   const [itemCount, setItemCount] = useState(1);
+  const [manualKm, setManualKm] = useState('');
+  const [customSurcharge, setCustomSurcharge] = useState('');
 
   // Price
   const [priceBreakdown, setPriceBreakdown] = useState(null);
@@ -179,13 +141,14 @@ export default function DispatcherForm() {
 
   /* ── Recalculate price ──────────────────────────────────── */
   useEffect(() => {
-    if (!routeInfo || !selectedServiceId) {
+    const distance_km = parseFloat(manualKm) || routeInfo?.distance_km;
+    if (!distance_km || !selectedServiceId) {
       setPriceBreakdown(null);
       return;
     }
     const service = services.find((s) => s.id === selectedServiceId);
     const activeSurchargeList = surcharges.filter((s) => activeSurchargeIds.has(s.id));
-    const result = calculatePrice(service, activeSurchargeList, routeInfo.distance_km, itemCount);
+    const result = calculatePrice(service, activeSurchargeList, distance_km, itemCount, parseFloat(customSurcharge) || 0);
     setPriceBreakdown(result);
 
     // Trigger pulse animation
@@ -194,7 +157,7 @@ export default function DispatcherForm() {
       void priceRef.current.offsetWidth; // reflow
       priceRef.current.classList.add('price-pulse');
     }
-  }, [routeInfo, selectedServiceId, activeSurchargeIds, services, surcharges, itemCount]);
+  }, [routeInfo, manualKm, selectedServiceId, activeSurchargeIds, services, surcharges, itemCount, customSurcharge]);
 
   /* ── Handlers ───────────────────────────────────────────── */
   const handleOriginSelected = useCallback((place) => {
@@ -225,7 +188,7 @@ export default function DispatcherForm() {
   return (
     <Grid container spacing={2.5} sx={{ height: '100%' }}>
       {/* ── LEFT COLUMN: Form ── */}
-      <Grid size={{ xs: 12, md: 5, lg: 4 }}>
+      <Grid size={{ xs: 12, md: 6, lg: 6 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
           {dataError && (
             <Alert severity="error" variant="outlined" onClose={() => setDataError('')}>
@@ -235,16 +198,16 @@ export default function DispatcherForm() {
 
           {/* Service Select */}
           <Card variant="outlined">
-            <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-              <Typography variant="subtitle1" fontWeight={700} mb={2} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+              <Typography variant="subtitle1" fontWeight={700} mb={1.5} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <LocalTaxiRoundedIcon sx={{ color: 'primary.main', fontSize: 20 }} />
                 Loại dịch vụ
               </Typography>
 
               {loadingData ? (
-                <Skeleton variant="rounded" height={56} />
+                <Skeleton variant="rounded" height={40} />
               ) : (
-                <FormControl fullWidth>
+                <FormControl fullWidth size="small">
                   <InputLabel>Chọn dịch vụ</InputLabel>
                   <Select
                     value={selectedServiceId}
@@ -268,9 +231,10 @@ export default function DispatcherForm() {
               )}
 
               {selectedService && (selectedService.name.toLowerCase().includes('giao hàng') || selectedService.name.toLowerCase().includes('giao nước')) && (
-                <Box sx={{ mt: 2.5 }}>
+                <Box sx={{ mt: 1.5 }}>
                   <TextField
                     fullWidth
+                    size="small"
                     type="number"
                     label="Số lượng (items/ly)"
                     value={itemCount}
@@ -280,36 +244,29 @@ export default function DispatcherForm() {
                 </Box>
               )}
 
-              {selectedService && (
-                <Box sx={{ display: 'flex', gap: 1, mt: 1.5, flexWrap: 'wrap' }}>
-                  <StatCard
-                    icon={<PaymentsRoundedIcon sx={{ color: 'primary.main', fontSize: 16 }} />}
-                    label={`${selectedService.base_km} km đầu`}
-                    value={formatVND(selectedService.base_price)}
-                    unit=""
-                    color="primary.main"
-                  />
-                  <StatCard
-                    icon={<RouteRoundedIcon sx={{ color: 'secondary.main', fontSize: 16 }} />}
-                    label="Mỗi km thêm"
-                    value={formatVND(selectedService.per_km_price)}
-                    unit="/km"
-                    color="secondary.main"
-                  />
-                </Box>
-              )}
             </CardContent>
           </Card>
 
           {/* Address Inputs */}
           <Card variant="outlined" sx={{ overflow: 'visible' }}>
-            <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-              <Typography variant="subtitle1" fontWeight={700} mb={2} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+              <Typography variant="subtitle1" fontWeight={700} mb={1.5} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <RouteRoundedIcon sx={{ color: 'primary.main', fontSize: 20 }} />
                 Hành trình
               </Typography>
 
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Nhập số km (nếu không chọn điểm)"
+                  type="number"
+                  value={manualKm}
+                  onChange={(e) => setManualKm(e.target.value)}
+                  placeholder="Ví dụ: 5.5"
+                  inputProps={{ step: '0.1', min: '0' }}
+                />
+                <Divider sx={{ my: 1, fontSize: '0.85rem', color: 'text.secondary' }}>Hoặc chọn điểm trên bản đồ</Divider>
                 <PlacesAutocomplete
                   label="Điểm đón"
                   value={originText}
@@ -327,20 +284,22 @@ export default function DispatcherForm() {
               </Box>
 
               {/* Route info chips */}
-              {routeInfo && (
+              {(manualKm || routeInfo) && (
                 <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
                   <Chip
                     icon={<RouteRoundedIcon />}
-                    label={`${routeInfo.distance_km.toFixed(1)} km`}
+                    label={`${manualKm ? parseFloat(manualKm) : routeInfo?.distance_km?.toFixed(1)} km`}
                     size="small"
                     sx={{ bgcolor: 'rgba(6,182,212,0.12)', color: 'secondary.main', fontWeight: 700 }}
                   />
-                  <Chip
-                    icon={<AccessTimeRoundedIcon />}
-                    label={`~${routeInfo.duration_min} phút`}
-                    size="small"
-                    sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: 'primary.main', fontWeight: 700 }}
-                  />
+                  {!manualKm && routeInfo && (
+                    <Chip
+                      icon={<AccessTimeRoundedIcon />}
+                      label={`~${routeInfo.duration_min} phút`}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: 'primary.main', fontWeight: 700 }}
+                    />
+                  )}
                 </Box>
               )}
             </CardContent>
@@ -356,8 +315,8 @@ export default function DispatcherForm() {
                 background: 'linear-gradient(135deg, rgba(245,158,11,0.06) 0%, rgba(26,26,36,1) 60%)',
               }}
             >
-              <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-                <Typography variant="subtitle1" fontWeight={700} mb={2} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="subtitle1" fontWeight={700} mb={1.5} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <PaymentsRoundedIcon sx={{ color: 'primary.main', fontSize: 20 }} />
                   Chi tiết cước phí
                 </Typography>
@@ -406,6 +365,13 @@ export default function DispatcherForm() {
                       color="secondary.main"
                     />
                   ))}
+                  {priceBreakdown.custom_surcharge > 0 && (
+                    <PriceRow
+                      label="Phụ phí đặc biệt"
+                      value={`+${formatVND(priceBreakdown.custom_surcharge)}`}
+                      color="secondary.main"
+                    />
+                  )}
                 </Box>
 
                 <Divider sx={{ my: 2, borderColor: 'rgba(245,158,11,0.25)' }} />
@@ -429,20 +395,22 @@ export default function DispatcherForm() {
 
                 {/* Stats row */}
                 <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
-                  {routeInfo && (
+                  {(manualKm || routeInfo) && (
                     <>
                       <Chip
                         icon={<RouteRoundedIcon sx={{ fontSize: '14px !important' }} />}
-                        label={`${routeInfo.distance_km.toFixed(1)} km`}
+                        label={`${manualKm ? parseFloat(manualKm) : routeInfo?.distance_km?.toFixed(1)} km`}
                         size="small"
                         sx={{ bgcolor: 'rgba(6,182,212,0.12)', color: 'secondary.main', fontWeight: 700 }}
                       />
-                      <Chip
-                        icon={<AccessTimeRoundedIcon sx={{ fontSize: '14px !important' }} />}
-                        label={`~${routeInfo.duration_min} phút`}
-                        size="small"
-                        sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: 'primary.main', fontWeight: 700 }}
-                      />
+                      {!manualKm && routeInfo && (
+                        <Chip
+                          icon={<AccessTimeRoundedIcon sx={{ fontSize: '14px !important' }} />}
+                          label={`~${routeInfo.duration_min} phút`}
+                          size="small"
+                          sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: 'primary.main', fontWeight: 700 }}
+                        />
+                      )}
                     </>
                   )}
                 </Box>
@@ -450,7 +418,7 @@ export default function DispatcherForm() {
             </Card>
           ) : (
             /* Placeholder khi chưa tính được giá */
-            routeInfo && !selectedServiceId && (
+            (manualKm || routeInfo) && !selectedServiceId && (
               <Alert severity="info" variant="outlined">
                 Vui lòng chọn loại dịch vụ để xem cước phí.
               </Alert>
@@ -460,8 +428,8 @@ export default function DispatcherForm() {
           {/* Surcharges */}
           {!loadingData && surcharges.length > 0 && (
             <Card variant="outlined">
-              <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-                <Typography variant="subtitle1" fontWeight={700} mb={2} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="subtitle1" fontWeight={700} mb={1.5} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <TuneRoundedIcon sx={{ color: 'primary.main', fontSize: 20 }} />
                   Phụ phí
                 </Typography>
@@ -519,6 +487,19 @@ export default function DispatcherForm() {
                     />
                   ))}
                 </FormGroup>
+
+                <Box sx={{ mt: 1.5 }}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Phụ phí đặc biệt điền tay (VNĐ)"
+                    type="number"
+                    value={customSurcharge}
+                    onChange={(e) => setCustomSurcharge(e.target.value)}
+                    placeholder="Ví dụ: 10000"
+                    inputProps={{ step: '1000', min: '0' }}
+                  />
+                </Box>
               </CardContent>
             </Card>
           )}
@@ -526,7 +507,7 @@ export default function DispatcherForm() {
       </Grid>
 
       {/* ── RIGHT COLUMN: Map + Price ── */}
-      <Grid size={{ xs: 12, md: 7, lg: 8 }}>
+      <Grid size={{ xs: 12, md: 6, lg: 6 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, height: '100%' }}>
           {/* Map */}
           <Card variant="outlined" sx={{ flex: 1, minHeight: { xs: 300, md: 400 } }}>
