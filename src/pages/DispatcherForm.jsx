@@ -279,7 +279,6 @@ export default function DispatcherForm() {
                   placeholder="Ví dụ: 5.5"
                   inputProps={{ step: '0.1', min: '0' }}
                 />
-                <Divider sx={{ my: 1, fontSize: '0.85rem', color: 'text.secondary' }}>Hoặc chọn điểm trên bản đồ</Divider>
                 <PlacesAutocomplete
                   label="Điểm đón"
                   value={originText}
