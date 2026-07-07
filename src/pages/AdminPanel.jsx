@@ -24,6 +24,7 @@ import DataGrid, {
   Pager,
   Paging,
   Toolbar,
+  RowDragging,
   Item as ToolbarItem,
 } from 'devextreme-react/data-grid';
 
@@ -126,15 +127,39 @@ function ServicesGrid() {
     setLoading(true);
     const { data: rows, error: err } = await supabase
       .from('services')
-      .select('*')
-      .order('id');
+      .select('*');
     if (err) {
       setError(err.message);
     } else {
-      setData(rows || []);
+      let savedOrder = [];
+      try {
+        savedOrder = JSON.parse(localStorage.getItem('servicesOrder')) || [];
+      } catch(e){}
+      const sortedRows = (rows || []).sort((a, b) => {
+        const aIndex = savedOrder.indexOf(a.id);
+        const bIndex = savedOrder.indexOf(b.id);
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+        if (aIndex !== -1) return -1;
+        if (bIndex !== -1) return 1;
+        return a.id - b.id;
+      });
+      setData(sortedRows);
     }
     setLoading(false);
   }, []);
+
+  const onReorder = (e) => {
+    const visibleRows = e.component.getVisibleRows();
+    const newData = [...data];
+    const toIndex = newData.findIndex((item) => item.id === visibleRows[e.toIndex].data.id);
+    const fromIndex = newData.findIndex((item) => item.id === e.itemData.id);
+
+    newData.splice(fromIndex, 1);
+    newData.splice(toIndex, 0, e.itemData);
+
+    setData(newData);
+    localStorage.setItem('servicesOrder', JSON.stringify(newData.map(item => item.id)));
+  };
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -203,6 +228,11 @@ function ServicesGrid() {
           onRowUpdated={onRowUpdated}
           onRowRemoved={onRowRemoved}
         >
+          <RowDragging
+            allowReordering={true}
+            onReorder={onReorder}
+            showDragIcons={true}
+          />
           <Editing
             mode="row"
             allowAdding={true}

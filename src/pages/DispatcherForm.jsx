@@ -119,17 +119,30 @@ export default function DispatcherForm() {
       try {
         const [{ data: svcData, error: svcErr }, { data: surData, error: surErr }] =
           await Promise.all([
-            supabase.from('services').select('*').order('id'),
+            supabase.from('services').select('*'),
             supabase.from('surcharges').select('*').eq('is_active', true).order('id'),
           ]);
 
         if (svcErr) throw new Error(svcErr.message);
         if (surErr) throw new Error(surErr.message);
 
-        setServices(svcData || []);
+        let savedOrder = [];
+        try {
+          savedOrder = JSON.parse(localStorage.getItem('servicesOrder')) || [];
+        } catch(e){}
+        const sortedServices = (svcData || []).sort((a, b) => {
+          const aIndex = savedOrder.indexOf(a.id);
+          const bIndex = savedOrder.indexOf(b.id);
+          if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+          if (aIndex !== -1) return -1;
+          if (bIndex !== -1) return 1;
+          return a.id - b.id;
+        });
+
+        setServices(sortedServices);
         setSurcharges(surData || []);
 
-        if (svcData?.length > 0) setSelectedServiceId(svcData[0].id);
+        if (sortedServices?.length > 0) setSelectedServiceId(sortedServices[0].id);
       } catch (err) {
         setDataError(`Lỗi tải dữ liệu: ${err.message}`);
       } finally {
