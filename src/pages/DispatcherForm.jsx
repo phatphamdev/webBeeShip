@@ -243,7 +243,7 @@ export default function DispatcherForm() {
                 </FormControl>
               )}
 
-              {selectedService && (selectedService.name.toLowerCase().includes('giao hàng') || selectedService.name.toLowerCase().includes('giao nước')) && (
+              {selectedService?.requires_item_count && (
                 <Box sx={{ mt: 1.5 }}>
                   <TextField
                     fullWidth
